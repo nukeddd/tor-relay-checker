@@ -5,7 +5,7 @@ use rand::seq::SliceRandom;
 use reqwest::Client;
 use serde::Deserialize;
 use std::fs;
-use std::io::{self, stdin, Write};
+use std::io::{self, Write};
 use std::path::{PathBuf};
 use std::time::Duration;
 use tokio::net::TcpStream;
@@ -22,7 +22,7 @@ struct Args {
     working_relay_num_goal: usize,
     #[arg(long, default_value_t = 10.0)]
     timeout: f64,
-    #[arg(short = 'o', long)]
+    #[arg(short = 'o', long = "outfile")]
     outfile: Option<PathBuf>,
     #[arg(long)]
     torrc_fmt: bool,
@@ -93,9 +93,9 @@ async fn grab_relays(
     proxy: Option<&String>,
     timeout_duration: Duration,
 ) -> Result<Vec<Relay>> {
-    let _base_url = "https://onionoo.torproject.org/details?type=relay&running=true&fields=fingerprint,or_addresses,country";
+    let base_url = "https://onionoo.torproject.org/details?type=relay&running=true&fields=fingerprint,or_addresses,country";
     let mut urls = preferred_urls.to_vec();
-    //urls.insert(0, base_url.to_string());
+    urls.insert(0, base_url.to_string());
     urls.push("https://raw.githubusercontent.com/nukeddd/tor-onionoo-mirror/refs/heads/master/details-running-relays-fingerprint-address-only.json".to_string());
     urls.push("https://bitbucket.org/ValdikSS/tor-onionoo-mirror/raw/master/details-running-relays-fingerprint-address-only.json".to_string());
 
@@ -170,6 +170,13 @@ fn filter_by_port(relays: &[Relay], ports: &[u16]) -> Vec<Relay> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
+
+    if let Some(path) = &args.outfile {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::File::create(path)?;
+    }
     let timeout_duration = Duration::from_secs_f64(args.timeout);
     let bridge_prefix = if args.torrc_fmt { "Bridge " } else { "" };
 
@@ -226,9 +233,9 @@ async fn main() -> Result<()> {
                 if let Some(path) = &args.outfile {
                     let mut file = fs::OpenOptions::new().append(true).create(true).open(path)?;
                     file.write_all(out_str.as_bytes())?;
-                } else {
-                    print!("{}", out_str);
                 }
+                print!("{}", out_str);
+
                 working_relays.push((relay, reachable_addrs));
             }
         }
@@ -253,6 +260,6 @@ async fn main() -> Result<()> {
     }
 
     println!("Done.");
-    stdin().read_line(&mut String::new())?;
+    //stdin().read_line(&mut String::new())?;
     Ok(())
 }
