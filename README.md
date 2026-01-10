@@ -1,4 +1,4 @@
-#Tor relay checker.
+## Tor relay checker.
 Using:
 ```
     Running target/debug/relay-scanner --help
