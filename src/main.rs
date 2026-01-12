@@ -214,29 +214,36 @@ async fn main() -> Result<()> {
             chunk.len()
         );
 
-        let mut stream = stream::iter(*chunk)
-            .map(|r| check_relay(r.clone(), timeout_duration))
+        let mut stream = stream::iter(chunk.iter().cloned())
+            .map(|r| tokio::spawn(check_relay(r, timeout_duration)))
             .buffer_unordered(args.num_relays);
 
         let mut found_in_attempt = false;
-        while let Some((relay, reachable_addrs)) = stream.next().await {
-            if !reachable_addrs.is_empty() {
-                if !found_in_attempt {
-                    println!("Reachable relays in this attempt:");
-                    found_in_attempt = true;
+        while let Some(join_result) = stream.next().await {
+            match join_result {
+                Ok((relay, reachable_addrs)) => {
+                    if !reachable_addrs.is_empty() {
+                        if !found_in_attempt {
+                            println!("Reachable relays in this attempt:");
+                            found_in_attempt = true;
+                        }
+                        let mut out_str = String::new();
+                        for (host, port) in &reachable_addrs {
+                            let addr = format_address(host, *port);
+                            out_str.push_str(&format!("{}{} {}\n", bridge_prefix, addr, relay.fingerprint));
+                        }
+                        if let Some(path) = &args.outfile {
+                            let mut file = fs::OpenOptions::new().append(true).open(path)?;
+                            file.write_all(out_str.as_bytes())?;
+                        } else {
+                            print!("{}", out_str);
+                        }
+                        working_relays.push((relay, reachable_addrs));
+                    }
                 }
-                let mut out_str = String::new();
-                for (host, port) in &reachable_addrs {
-                    let addr = format_address(host, *port);
-                    out_str.push_str(&format!("{}{} {}\n", bridge_prefix, addr, relay.fingerprint));
+                Err(e) => {
+                    eprintln!("Task failed: {:?}", e);
                 }
-                if let Some(path) = &args.outfile {
-                    let mut file = fs::OpenOptions::new().append(true).create(true).open(path)?;
-                    file.write_all(out_str.as_bytes())?;
-                }
-                print!("{}", out_str);
-
-                working_relays.push((relay, reachable_addrs));
             }
         }
         if !found_in_attempt {
